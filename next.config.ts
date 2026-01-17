@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Enable 'use cache' directive for caching across requests (Next.js 16+)
+  cacheComponents: true,
 };
 
 export default nextConfig;

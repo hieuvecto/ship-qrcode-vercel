@@ -3,12 +3,18 @@ import { BoatCard } from "@/components/boats/boat-card";
 import { BoatNotFound } from "@/components/boats/boat-not-found";
 import { Metadata } from "next";
 
-export const revalidate = 60; // ISR: revalidate every 60 seconds
-
 interface BoatPageProps {
   params: Promise<{
     id: string;
   }>;
+}
+
+// Return at least one ID for build-time validation (required by cacheComponents)
+// Other boats will be rendered on-demand
+// Uses a mock ID to avoid fetching real data during build
+export async function generateStaticParams() {
+  // Use a non-existent ID to satisfy build validation without fetching real data
+  return [{ id: "__build_placeholder__" }];
 }
 
 export async function generateMetadata({ params }: BoatPageProps): Promise<Metadata> {

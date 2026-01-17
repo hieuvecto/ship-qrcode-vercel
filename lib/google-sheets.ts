@@ -52,6 +52,8 @@ export const COLUMN_MAPPING = {
 } as const;
 
 // Initialize Google Sheets client
+// Note: Cannot use 'use cache' here because GoogleSpreadsheet is a class instance (not serializable)
+// Caching is handled at the server action level where data is transformed to plain objects
 export async function getGoogleSheetsClient() {
   logger.sheets.connectionStart();
 
@@ -84,6 +86,8 @@ export async function getGoogleSheetsClient() {
     });
 
     const doc = new GoogleSpreadsheet(sheetId, serviceAccountAuth);
+
+    // This is the expensive API call that we want to cache across requests
     await doc.loadInfo();
 
     logger.debug("GoogleSheets", "Document loaded", {
@@ -136,6 +140,8 @@ export function rowToBoat(row: any): Boat {
 }
 
 // Get boats sheet with header row configuration
+// Note: Cannot use 'use cache' here because Sheet is a class instance (not serializable)
+// Caching is handled at the server action level where data is transformed to plain objects
 export async function getBoatsSheet() {
   const doc = await getGoogleSheetsClient();
   const sheetName = process.env.GOOGLE_SHEET_NAME || "Boats";

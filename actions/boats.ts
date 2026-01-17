@@ -1,6 +1,6 @@
 "use server";
 
-import { unstable_cache } from "next/cache";
+import { cacheLife } from "next/cache";
 import { Boat, BoatListResponse } from "@/types/boat";
 import { getBoatsSheet, rowToBoat, COLUMN_INDICES } from "@/lib/google-sheets";
 import { mockBoats } from "@/lib/mock-data";
@@ -19,51 +19,99 @@ if (USE_MOCK_DATA) {
   logger.info("Boats", "Using PRODUCTION mode - Data will be fetched from Google Sheets");
 }
 
+// Shared cached function to fetch all boat rows from Google Sheets
+// This function is called by all server actions to ensure sheet.getRows() is called only once per minute
+// Returns serializable raw row data (arrays) instead of Row class instances
+async function getAllBoatRows() {
+  "use cache";
+  cacheLife({ revalidate: CACHE_REVALIDATE });
+
+  logger.debug("Boats", "Fetching all boat rows from Google Sheets (cached)");
+
+  const sheet = await getBoatsSheet();
+
+  logger.sheets.loadingRows(sheet.title, parseInt(process.env.GOOGLE_SHEET_HEADER_ROW || "1", 10));
+  const rows = await sheet.getRows();
+  logger.sheets.rowsLoaded(sheet.title, rows.length);
+
+  // Extract raw data from Row instances to make them serializable
+  // Each row's _rawData contains the cell values as an array
+  const serializedRows = rows.map((row) => {
+    return (row as any)._rawData || [];
+  });
+
+  logger.info("Boats", `Cached ${serializedRows.length} boat rows (will revalidate in ${CACHE_REVALIDATE}s)`);
+
+  return serializedRows;
+}
+
+// Helper function to convert raw row data to Boat object
+// Similar to rowToBoat but works with raw arrays instead of Row instances
+function rawDataToBoat(rawData: any[]): Boat {
+  const getCellValue = (index: number): string => {
+    const value = rawData[index];
+    return value !== null && value !== undefined ? String(value).trim() : "";
+  };
+
+  const serialNumber = getCellValue(COLUMN_INDICES.serial_number);
+
+  return {
+    id: serialNumber,
+    serial_number: serialNumber,
+    district: getCellValue(COLUMN_INDICES.district),
+    boat_number: getCellValue(COLUMN_INDICES.boat_number),
+    registration_date: getCellValue(COLUMN_INDICES.registration_date),
+    boat_group: getCellValue(COLUMN_INDICES.boat_group),
+    main_job: getCellValue(COLUMN_INDICES.main_job),
+    side_job: getCellValue(COLUMN_INDICES.side_job),
+    boat_members: getCellValue(COLUMN_INDICES.boat_members),
+    owner_name: getCellValue(COLUMN_INDICES.owner_name),
+    citizen_id: getCellValue(COLUMN_INDICES.citizen_id),
+    phone: getCellValue(COLUMN_INDICES.phone),
+    address: getCellValue(COLUMN_INDICES.address),
+    inspection_number: getCellValue(COLUMN_INDICES.inspection_number),
+    inspection_expiry_date: getCellValue(COLUMN_INDICES.inspection_expiry_date),
+    boat_length: getCellValue(COLUMN_INDICES.boat_length),
+    total_power: getCellValue(COLUMN_INDICES.total_power),
+  };
+}
+
 // Get single boat by ID
 export async function getBoatById(id: string): Promise<Boat | null> {
+  // Handle build-time placeholder (used for cacheComponents validation)
+  if (id === "__build_placeholder__") {
+    return null;
+  }
+
   // Use mock data if enabled
   if (USE_MOCK_DATA) {
     const boat = mockBoats.find((b) => b.id === id);
     return boat || null;
   }
 
-  return unstable_cache(
-    async () => {
-      try {
-        logger.debug("Boats", `Fetching boat by ID: ${id}`);
+  try {
+    logger.debug("Boats", `Fetching boat by ID: ${id}`);
 
-        const sheet = await getBoatsSheet();
+    // Use shared cached rows data
+    const rowsData = await getAllBoatRows();
 
-        logger.sheets.loadingRows(sheet.title, parseInt(process.env.GOOGLE_SHEET_HEADER_ROW || "1", 10));
-        const rows = await sheet.getRows();
-        logger.sheets.rowsLoaded(sheet.title, rows.length);
+    // Search by serial_number (Số TT) using column index
+    const rawData = rowsData.find((row) => {
+      const serialNumber = row[COLUMN_INDICES.serial_number];
+      return serialNumber !== null && serialNumber !== undefined && String(serialNumber).trim() === id;
+    });
 
-        // Search by serial_number (Số TT) using column index since the sheet doesn't have an "ID" column
-        // Note: _rawData is a private property, but we use it to access columns by index
-        const row = rows.find((r) => {
-          const rawData = (r as any)._rawData || [];
-          const serialNumber = rawData[COLUMN_INDICES.serial_number];
-          return serialNumber !== null && serialNumber !== undefined && String(serialNumber).trim() === id;
-        });
-
-        if (!row) {
-          logger.warn("Boats", `Boat with serial_number "${id}" not found`);
-          return null;
-        }
-
-        logger.info("Boats", `Found boat: ID=${id}`);
-        return rowToBoat(row);
-      } catch (error) {
-        logger.error("Boats", `Error fetching boat by ID: ${id}`, error);
-        throw new Error("Failed to fetch boat");
-      }
-    },
-    [`boat-${id}`],
-    {
-      revalidate: CACHE_REVALIDATE,
-      tags: [`boat-${id}`],
+    if (!rawData) {
+      logger.warn("Boats", `Boat with serial_number "${id}" not found`);
+      return null;
     }
-  )();
+
+    logger.info("Boats", `Found boat: ID=${id}`);
+    return rawDataToBoat(rawData);
+  } catch (error) {
+    logger.error("Boats", `Error fetching boat by ID: ${id}`, error);
+    throw new Error("Failed to fetch boat");
+  }
 }
 
 // Get paginated boats with search
@@ -103,65 +151,51 @@ export async function getBoats(
     };
   }
 
-  const cacheKey = `boats-${page}-${limit}-${search || "all"}`;
+  try {
+    logger.debug("Boats", `Fetching boats: page=${page}, limit=${limit}, search="${search || "none"}"`);
 
-  return unstable_cache(
-    async () => {
-      try {
-        logger.debug("Boats", `Fetching boats: page=${page}, limit=${limit}, search="${search || "none"}"`);
+    // Use shared cached rows data
+    const rowsData = await getAllBoatRows();
 
-        const sheet = await getBoatsSheet();
+    // Convert all rows to boats
+    let boats: Boat[] = rowsData.map((row) => rawDataToBoat(row));
+    logger.debug("Boats", `Converted ${boats.length} rows to boat objects`);
 
-        logger.sheets.loadingRows(sheet.title, parseInt(process.env.GOOGLE_SHEET_HEADER_ROW || "1", 10));
-        const rows = await sheet.getRows();
-        logger.sheets.rowsLoaded(sheet.title, rows.length);
+    // Apply search filter
+    if (search && search.trim()) {
+      const searchLower = search.toLowerCase().trim();
+      logger.sheets.searchStart(search);
 
-        // Convert all rows to boats
-        let boats: Boat[] = rows.map((row) => rowToBoat(row));
-        logger.debug("Boats", `Converted ${boats.length} rows to boat objects`);
+      boats = boats.filter(
+        (boat) =>
+          boat.boat_number.toLowerCase().includes(searchLower) ||
+          boat.owner_name.toLowerCase().includes(searchLower)
+      );
 
-        // Apply search filter
-        if (search && search.trim()) {
-          const searchLower = search.toLowerCase().trim();
-          logger.sheets.searchStart(search);
-
-          boats = boats.filter(
-            (boat) =>
-              boat.boat_number.toLowerCase().includes(searchLower) ||
-              boat.owner_name.toLowerCase().includes(searchLower)
-          );
-
-          logger.sheets.searchResults(search, boats.length);
-        }
-
-        const total = boats.length;
-        const totalPages = Math.ceil(total / limit);
-
-        // Apply pagination
-        const start = (page - 1) * limit;
-        const end = start + limit;
-        const paginatedBoats = boats.slice(start, end);
-
-        logger.info("Boats", `Returning ${paginatedBoats.length} boats (page ${page}/${totalPages}, total: ${total})`);
-
-        return {
-          boats: paginatedBoats,
-          total,
-          page,
-          limit,
-          totalPages,
-        };
-      } catch (error) {
-        logger.error("Boats", "Error fetching boats", error);
-        throw new Error("Failed to fetch boats");
-      }
-    },
-    [cacheKey],
-    {
-      revalidate: CACHE_REVALIDATE,
-      tags: ["boats"],
+      logger.sheets.searchResults(search, boats.length);
     }
-  )();
+
+    const total = boats.length;
+    const totalPages = Math.ceil(total / limit);
+
+    // Apply pagination
+    const start = (page - 1) * limit;
+    const end = start + limit;
+    const paginatedBoats = boats.slice(start, end);
+
+    logger.info("Boats", `Returning ${paginatedBoats.length} boats (page ${page}/${totalPages}, total: ${total})`);
+
+    return {
+      boats: paginatedBoats,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
+  } catch (error) {
+    logger.error("Boats", "Error fetching boats", error);
+    throw new Error("Failed to fetch boats");
+  }
 }
 
 // Get total boat count
@@ -171,28 +205,16 @@ export async function getTotalBoatCount(): Promise<number> {
     return mockBoats.length;
   }
 
-  return unstable_cache(
-    async () => {
-      try {
-        logger.debug("Boats", "Fetching total boat count");
+  try {
+    logger.debug("Boats", "Fetching total boat count");
 
-        const sheet = await getBoatsSheet();
+    // Use shared cached rows data
+    const rowsData = await getAllBoatRows();
 
-        logger.sheets.loadingRows(sheet.title, parseInt(process.env.GOOGLE_SHEET_HEADER_ROW || "1", 10));
-        const rows = await sheet.getRows();
-        logger.sheets.rowsLoaded(sheet.title, rows.length);
-
-        logger.info("Boats", `Total boat count: ${rows.length}`);
-        return rows.length;
-      } catch (error) {
-        logger.error("Boats", "Error fetching boat count", error);
-        return 0;
-      }
-    },
-    ["boat-count"],
-    {
-      revalidate: CACHE_REVALIDATE,
-      tags: ["boats"],
-    }
-  )();
+    logger.info("Boats", `Total boat count: ${rowsData.length}`);
+    return rowsData.length;
+  } catch (error) {
+    logger.error("Boats", "Error fetching boat count", error);
+    return 0;
+  }
 }
