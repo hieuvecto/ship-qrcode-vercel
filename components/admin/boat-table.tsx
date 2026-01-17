@@ -69,7 +69,11 @@ export function BoatTable({ boats }: BoatTableProps) {
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
                     <Button variant="outline" size="sm" asChild>
-                      <Link href={`/boats/${boat.id}`} target="_blank">
+                      <Link
+                        href={`/boats/${boat.id}`}
+                        target="_blank"
+                        prefetch={false}
+                      >
                         <Eye className="mr-1 h-4 w-4" />
                         {vi.admin.viewDetails}
                       </Link>

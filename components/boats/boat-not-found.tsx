@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
 import { vi } from "@/locales/vi";
 
@@ -15,9 +21,7 @@ export function BoatNotFound() {
           <CardTitle className="text-2xl font-bold">
             {vi.boat.notFound}
           </CardTitle>
-          <CardDescription>
-            {vi.boat.notFoundDescription}
-          </CardDescription>
+          <CardDescription>{vi.boat.notFoundDescription}</CardDescription>
         </CardHeader>
         <CardContent>
           <Button asChild className="w-full" variant="outline">
