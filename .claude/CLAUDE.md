@@ -1,0 +1,2 @@
+- Should update CLAUDE.md accordingly to reflect these changes. The update should be minimal.
+- Updating memory files should be minimal and only include necessary changes to keep them accurate.
