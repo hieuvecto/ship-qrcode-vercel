@@ -7,8 +7,9 @@ type LogLevel = "info" | "warn" | "error" | "debug";
 function log(level: LogLevel, context: string, message: string, data?: any) {
   if (!IS_DEV && !ENABLE_SHEETS_LOGGING) return;
 
-  const timestamp = new Date().toISOString();
-  const prefix = `[${timestamp}] [${level.toUpperCase()}] [${context}]`;
+  // Only use timestamps in development mode
+  // In Next.js 16 with cacheComponents, new Date() causes build errors in cached functions
+  const prefix = `[${level.toUpperCase()}] [${context}]`;
 
   switch (level) {
     case "error":
