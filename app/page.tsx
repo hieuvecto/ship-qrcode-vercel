@@ -216,7 +216,7 @@ export default function Home() {
         <div className="container mx-auto px-4 py-8 text-center text-sm text-muted-foreground">
           <p>QR Code Tàu Cá Đà Nẵng</p>
           <p className="mt-1">
-            Sở Nông nghiệp và Phát triển Nông thôn Thành phố Đà Nẵng
+            Sở Nông nghiệp và Môi trường thành phố Đà Nẵng{" "}
           </p>
         </div>
       </footer>

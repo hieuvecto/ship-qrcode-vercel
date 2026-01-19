@@ -17,7 +17,8 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "QR Code Tàu Cá Đà Nẵng",
-  description: "Tra cứu thông tin tàu cá nhanh chóng và chính xác thông qua mã QR - Sở Nông nghiệp và Phát triển Nông thôn Đà Nẵng",
+  description:
+    "Tra cứu thông tin tàu cá nhanh chóng và chính xác thông qua mã QR - Sở Nông nghiệp và Môi trường thành phố Đà Nẵng",
 };
 
 export default function RootLayout({
